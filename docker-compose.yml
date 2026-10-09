@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: reto_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-reto_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - reto_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reto_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+    networks:
+      - reto_network
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: reto_gateway
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    depends_on:
+      - startups-service
+      - technologies-service
+    networks:
+      - reto_network
+
+  startups-service:
+    build:
+      context: ./services/startups
+      dockerfile: Dockerfile
+    container_name: startups_service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-reto_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
+      SERVICE_PORT: 3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - reto_network
+
+  technologies-service:
+    build:
+      context: ./services/technologies
+      dockerfile: Dockerfile
+    container_name: technologies_service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-reto_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
+      SERVICE_PORT: 3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - reto_network
+
+networks:
+  reto_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
